@@ -1,0 +1,52 @@
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: com.example.spring.kafka.CustomUpgradeSpringKafka_4_0
+displayName: Custom Spring Kafka Migration
+description: Custom migration recipes for Spring Kafka 3 to 4 upgrade including dependency updates
+recipeList:
+  - com.example.spring.kafka.MigrateSpringBootJsonToJacksonStarter
+  - com.example.spring.kafka.MigrateSpringKafaTestToSpringBootStarterKafkaTest
+  - com.example.spring.kafka.RemoveDeprecatedEmbeddedKafkaParameters
+
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: com.example.spring.kafka.MigrateSpringBootJsonToJacksonStarter
+displayName: Migrate spring-boot-starter-json to spring-boot-starter-jackson
+description: Replaces deprecated spring-boot-starter-json with spring-boot-starter-jackson for Spring Boot 4.0
+recipeList:
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: org.springframework.boot
+      oldArtifactId: spring-boot-starter-json
+      newGroupId: org.springframework.boot
+      newArtifactId: spring-boot-starter-jackson
+
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: com.example.spring.kafka.MigrateSpringKafaTestToSpringBootStarterKafkaTest
+displayName: Migrate spring-kafka-test to spring-boot-starter-kafka-test
+description: Replaces spring-kafka-test with spring-boot-starter-kafka-test for Spring Boot 4.0
+recipeList:
+  - org.openrewrite.maven.ChangeDependencyGroupIdAndArtifactId:
+      oldGroupId: org.springframework.kafka
+      oldArtifactId: spring-kafka-test
+      newGroupId: org.springframework.boot
+      newArtifactId: spring-boot-starter-kafka-test
+
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: com.example.spring.kafka.RemoveDeprecatedEmbeddedKafkaParameters
+displayName: Remove deprecated @EmbeddedKafka parameters
+description: Removes zookeeperPort and kraft parameters from @EmbeddedKafka annotation as they are removed in Spring Kafka 4
+recipeList:
+  - org.openrewrite.java.RemoveAnnotationAttribute:
+      annotationType: org.springframework.kafka.test.context.EmbeddedKafka
+      attributeName: zookeeperPort
+  - org.openrewrite.java.RemoveAnnotationAttribute:
+      annotationType: org.springframework.kafka.test.context.EmbeddedKafka
+      attributeName: kraft
+  - org.openrewrite.java.RemoveAnnotationAttribute:
+      annotationType: org.springframework.kafka.test.context.EmbeddedKafka
+      attributeName: zkConnectionTimeout
+  - org.openrewrite.java.RemoveAnnotationAttribute:
+      annotationType: org.springframework.kafka.test.context.EmbeddedKafka
+      attributeName: zkSessionTimeout
