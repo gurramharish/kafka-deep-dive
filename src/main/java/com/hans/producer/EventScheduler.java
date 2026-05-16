@@ -1,5 +1,7 @@
 package com.hans.producer;
 
+import com.hans.event.producer.NotifyEvent;
+import com.hans.event.producer.PaymentEvent;
 import com.hans.event.OrderCreatedEvent;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
@@ -14,20 +16,40 @@ import org.springframework.stereotype.Component;
 public class EventScheduler {
 
   private final OrderCreatedEventProducer orderCreatedEventProducer;
+  private final OtherEventProducer otherEventProducer;
   private final Random random = new Random();
   private final AtomicLong orderIdCounter = new AtomicLong(1);
   
   private static final String[] CUSTOMER_IDS = {"CUST001", "CUST002", "CUST003", "CUST004", "CUST005"};
   private static final String[] PRODUCT_IDS = {"PROD001", "PROD002", "PROD003", "PROD004", "PROD005"};
 
-  public EventScheduler(OrderCreatedEventProducer orderCreatedEventProducer) {
+  public EventScheduler(OrderCreatedEventProducer orderCreatedEventProducer, OtherEventProducer otherEventProducer) {
     this.orderCreatedEventProducer = orderCreatedEventProducer;
+    this.otherEventProducer = otherEventProducer;
   }
 
   @Scheduled(fixedRate = 1000)
   public void schedule() {
     OrderCreatedEvent randomOrder = createRandomOrder();
     orderCreatedEventProducer.produce(randomOrder);
+    
+    PaymentEvent paymentEvent = new PaymentEvent(
+        java.util.UUID.randomUUID().toString(), 
+        randomOrder.orderNumber(),
+        randomOrder.price(), 
+        "SUCCESS", 
+        "USD"
+    );
+    otherEventProducer.publishPaymentEvent(paymentEvent);
+    
+    NotifyEvent notifyEvent = new NotifyEvent(
+        java.util.UUID.randomUUID().toString(), 
+        randomOrder.customerId(), 
+        "Order " + randomOrder.orderNumber() + " placed successfully",
+        "EMAIL", 
+        "HIGH"
+    );
+    otherEventProducer.publishNotifyEvent(notifyEvent);
   }
   
   private OrderCreatedEvent createRandomOrder() {

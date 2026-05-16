@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.ProducerFactory;
 
 @Configuration
 public class AppConfig {
@@ -23,5 +24,11 @@ public class AppConfig {
     DefaultKafkaProducerFactory<String, OrderCreatedEvent> factory = new DefaultKafkaProducerFactory<>(configProps);
 
     return new KafkaTemplate<>(factory);
+  }
+
+  @Bean
+  public KafkaTemplate<String, Object> defaultKafkaTemplate(
+      ProducerFactory<String, Object> producerFactory) {
+    return new KafkaTemplate<>(producerFactory);
   }
 }
