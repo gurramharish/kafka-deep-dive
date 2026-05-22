@@ -15,7 +15,7 @@ public class OtherEventConsumer {
 
   private static final Logger log = LoggerFactory.getLogger(OtherEventConsumer.class);
 
-  @KafkaListener(topics = "payment-events", groupId = "payment-consumer-group")
+  @KafkaListener(topics = "payment-events", groupId = "payment-consumer-group", containerFactory = "paymentEventConcurrentKafkaListenerContainerFactory")
   public void consumePayment(ConsumerRecord<String, Object> record) {
     log.info("Consumer headers for payment: {}", record.headers());
     if (record.value() instanceof PaymentEvent payment) {
