@@ -108,12 +108,126 @@ flowchart TD
 7. **Class Loading**: If it is a trusted package, it attempts to load the class.
    - If the class exists, it successfully loads the class and deserializes the payload.
    - If the class does not exist in the consumer's classpath, it throws a `ClassNotFoundException`.
+## Advanced Consumer Configurations
+
+This section covers the advanced settings configured in `application.properties` that govern fetch behavior, poll behavior, heartbeat/rebalance timing, and offset commit strategies.
+
+### 1. Fetch & Poll Tuning
+These configurations control how the consumer requests and retrieves data from the Kafka brokers to optimize throughput, latency, and memory usage.
+
+*   **Metadata Max Age (`metadata.max.age.ms`)**:
+    *   **Config**: `spring.kafka.consumer.properties.metadata.max.age.ms=5`
+    *   **Purpose**: The maximum time (in milliseconds) to force a refresh of metadata even if we haven't seen any partition leadership changes. Set to `5` milliseconds in this project (default is 5 minutes / `300000` ms) for aggressive metadata refreshing.
+*   **Poll Timeout (`poll-timeout`)**:
+    *   **Config**: `spring.kafka.listener.poll-timeout=5000`
+    *   **Purpose**: The maximum time (in milliseconds) the consumer thread blocks waiting for records during a single `poll()` call before returning. Set to `5000` ms (5 seconds).
+*   **Partition Fetch Bytes (`max.partition.fetch.bytes`)**:
+    *   **Config**: `spring.kafka.consumer.properties.max.partition.fetch.bytes=1048576`
+    *   **Purpose**: The maximum amount of data (in bytes) the broker will return *per partition* in a single fetch request. Set to `1048576` bytes (1MB).
+*   **Fetch Max Bytes (`fetch.max.bytes`)**:
+    *   **Config**: `spring.kafka.consumer.properties.fetch.max.bytes=52428800`
+    *   **Purpose**: The maximum total amount of data (in bytes) the broker should return for a single fetch request across all partitions. Set to `52428800` bytes (52MB).
+*   **Fetch Min Bytes (`fetch.min.bytes`)**:
+    *   **Config**: `spring.kafka.consumer.properties.fetch.min.bytes=1`
+    *   **Purpose**: The minimum amount of data (in bytes) the broker must have accumulated before responding to a fetch request. Set to `1` byte (broker responds immediately when at least 1 byte is available).
+*   **Fetch Max Wait Time (`fetch.max.wait.ms`)**:
+    *   **Config**: `spring.kafka.consumer.properties.fetch.max.wait.ms=500`
+    *   **Purpose**: The maximum time (in milliseconds) the broker will block/wait before responding to a fetch request if the data accumulated is less than `fetch.min.bytes`. Set to `500` ms (0.5 seconds).
+*   **Max Poll Records (`max.poll.records`)**:
+    *   **Config**: `spring.kafka.consumer.properties.max.poll.records=100`
+    *   **Purpose**: The maximum number of records returned in a single `poll()` call.
+    *   **Note**: If a broker sends more records (e.g., 2000 records to satisfy `fetch.max.bytes`), Spring Kafka keeps the extra records (e.g., 1900) in an internal buffer and supplies them in subsequent polls without making additional network requests to the broker.
+*   **Idle Between Polls (`idle-between-polls`)**:
+    *   **Config**: `spring.kafka.listener.idle-between-polls=5`
+    *   **Purpose**: The gap or sleep duration (in milliseconds) between successive poll operations to allow some pause between polls. Set to `5` ms.
+
+---
+
+### 2. Consumer Liveness & Rebalance Settings
+These properties help the Kafka Group Coordinator determine if a consumer is healthy, dead, or stuck, triggering a consumer group rebalance if necessary.
+
+*   **Heartbeat Interval (`heartbeat.interval.ms`)**:
+    *   **Config**: `spring.kafka.consumer.properties.heartbeat.interval.ms=3000`
+    *   **Purpose**: The interval at which the consumer sends background heartbeat pulses to the Group Coordinator to indicate it is alive. Must be lower than `session.timeout.ms` (typically 1/3 of the value). Set to `3000` ms (3 seconds).
+*   **Session Timeout (`session.timeout.ms`)**:
+    *   **Config**: `spring.kafka.consumer.properties.session.timeout.ms=45000`
+    *   **Purpose**: The maximum time the Group Coordinator waits without receiving a heartbeat before declaring the consumer dead and initiating a **rebalance** to reassign its partitions. Set to `45000` ms (45 seconds).
+*   **Max Poll Interval (`max.poll.interval.ms`)**:
+    *   **Config**: `spring.kafka.consumer.properties.max.poll.interval.ms=300000`
+    *   **Purpose**: The maximum allowed delay between consecutive calls to `poll()`. If the consumer takes too long to process records and doesn't call `poll()` within this limit, the coordinator assumes the consumer has hung/stuck, leaves the group, and triggers a rebalance. Set to `300000` ms (5 minutes).
+
+---
+
+### 3. Offset Commit & Ack Modes (Offset Commit Modes)
+
+In Apache Kafka, an **offset** is a unique identifier for a record within a partition. "Committing" an offset tells the Kafka broker, *"I have successfully processed all messages up to this point."* Choosing the right commit strategy is crucial for balancing **throughput** (performance) and **reliability** (preventing data loss or duplicate processing).
+
+Here is a breakdown of the offset commit modes in Spring Kafka, including auto-commit and manual commit approaches.
+
+#### Auto Commit
+
+*   **Config**: `spring.kafka.consumer.properties.enable.auto.commit=true` (or `spring.kafka.consumer.enable-auto-commit=true`)
+*   **Interval Config**: `spring.kafka.consumer.properties.auto.commit.interval.ms=1000` (1 second)
+*   **How it works**: A background thread periodically checks if the specified interval has passed. If it has, it automatically commits the offsets for the fetched events, regardless of whether your application has actually finished processing them.
+*   **Pros**: Easiest to set up; zero code required. High throughput since committing happens asynchronously without blocking your application.
+*   **Cons**: High risk of data anomalies. If your application crashes *after* an auto-commit but *before* processing finishes, you lose data. If it crashes *before* the auto-commit but *after* processing, you will re-process duplicates upon restart.
+*   **When to use**: Non-critical data streams (e.g., logging, basic metrics) where occasional data loss or duplication is acceptable.
+
+#### Manual Commit (Ack Modes)
+
+To utilize manual commit modes and gain strict control over message processing guarantees, you must first disable auto-commit:
+```properties
+spring.kafka.consumer.properties.enable.auto.commit=false
+```
+
+You then control the exact commit behavior by configuring the acknowledgment mode:
+```properties
+spring.kafka.listener.ack-mode=[MODE]
+```
+
+##### `BATCH` (Default)
+*   **How it works:** When the consumer polls and retrieves a batch of records (e.g., 500 records), it processes all of them sequentially. Once the *entire batch* is completely processed without errors, the framework sends a single commit request for the highest offset.
+*   **Pros:** Excellent balance of high throughput (only one network call per batch) and safety.
+*   **Cons:** If record 499 out of 500 throws an exception, none of the batch offsets are committed. Upon restart, the consumer will re-process all 500 records (duplicate processing).
+*   **When to use:** The recommended default for most general use cases where occasional duplicate processing upon failure is acceptable.
+
+##### `RECORD`
+*   **How it works:** A commit request is sent immediately over the network to the broker after *each individual record* is processed successfully.
+*   **Pros:** Minimizes duplicate processing. If the application crashes, only the currently processing record will be redelivered.
+*   **Cons:** Massive network overhead. Committing 500 times for 500 records drastically reduces your application's throughput.
+*   **When to use:** Strict processing requirements where processing time is already slow (e.g., heavy database writes) and minimizing duplicate processing is worth the severe network performance cost.
+
+##### `TIME`
+*   **Properties:** `ack-mode=time`, `spring.kafka.listener.ack-time=5000`
+*   **How it works:** Commits offsets based on a time interval. The framework will commit whatever has been successfully processed every few seconds (as defined by your limit).
+*   **When to use:** When you want batch-like behavior but want to guarantee that offsets are committed at a predictable cadence, even if message volume is low and batches take a long time to fill up.
+
+##### `COUNT`
+*   **Properties:** `ack-mode=count`, `spring.kafka.listener.ack-count=10`
+*   **How it works:** Commits the offsets only after a strictly defined number of records (e.g., after every 10 records) have been successfully processed, regardless of batch boundaries.
+*   **When to use:** When you are processing very large batches and want to create frequent "checkpoints" to avoid massive replays in case of a failure midway through a batch.
+
+##### `MANUAL`
+*   **How it works:** You manage this programmatically by injecting an `Acknowledgment` object into your `@KafkaListener` method parameter and invoking `ack.acknowledge()` when your business logic completes. However, **it essentially behaves like `BATCH`**—even if you acknowledge each record, the framework queues those acknowledgments and waits for the entire polled batch to complete before sending a single commit command to Kafka.
+*   **Pros:** Allows conditional processing. You can choose *not* to acknowledge a message if it doesn't meet certain criteria, allowing you to skip commits conditionally.
+*   **When to use:** When your business logic requires programmatic control over *if* a message was successfully handled, rather than relying on the listener method simply returning without an exception.
+
+##### `MANUAL_IMMEDIATE`
+*   **How it works:** Uses the same code setup as `MANUAL` (invoking `ack.acknowledge()`), but differs significantly in execution. It initiates the network commit *immediately* for each record as soon as the method is invoked, instead of waiting for the rest of the batch to finish.
+*   **Pros:** Immediate, exact control over the commit timing within your code execution flow.
+*   **Cons:** Introduces the same heavy network overhead issues as the `RECORD` mode.
+*   **When to use:** Highly sensitive transactions where you need absolute certainty that a specific message is committed *right now*, before the next line of code executes.
+
+---
+
 ## Project Structure
 - `Order.java` - Event model
 - `OrderCreatedEventProducer.java` - Kafka producer for order events
 - `OrderConsumer.java` - Kafka consumer for order events
 - `EventScheduler.java` - Scheduled event producer (when enabled)
 - `AppConfig.java` - Application configuration
+
+---
 
 ## Running the Application
 1. Ensure Kafka is running on localhost:9095 and localhost:9096
