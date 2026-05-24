@@ -5,12 +5,10 @@ import com.hans.event.Order;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnBooleanProperty(name = "enable.record.consumer")
 public class OrderConsumer {
 
   private static final Logger log = LoggerFactory.getLogger(OrderConsumer.class);

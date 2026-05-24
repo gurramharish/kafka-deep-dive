@@ -8,7 +8,7 @@ import tools.jackson.databind.ObjectMapper;
 
 public class OrderSummarySerializer implements Serializer<OrderCreatedEvent> {
 
-  private ObjectMapper objectMapper;
+  private final ObjectMapper objectMapper;
 
   public OrderSummarySerializer() {
     this.objectMapper = new ObjectMapper();

@@ -1,14 +1,16 @@
 # Kafka Deep Dive
 
-A Spring Boot application demonstrating Kafka producer and consumer configuration with advanced features like batching, compression, retries, and idempotency.
+A multi-module Maven project demonstrating Kafka producer and consumer configurations with advanced features like batching, compression, retries, and idempotency, split into separate standalone applications that can run concurrently.
 
-## Application Configuration
+## Aggregator Architecture & Project Layout
 
-- **Server Port**: 8080
-- **Application Name**: kafka-deep-dive
-- **Kafka Bootstrap Servers**: localhost:9095,localhost:9096
-- **Topic**: order-events-topic
-- **Scheduled Producer**: Disabled (set `enable.scheduled.producer=true` to enable)
+The codebase has been split into two independent Spring Boot services under a parent aggregator POM:
+1. **`kafka-producer`** (Runs on Port `8080`): Exposes REST Controller endpoints for on-demand message publishing and includes an optional scheduled event generator.
+2. **`kafka-consumer`** (Runs on Port `8081`): Consumes events from the topics with configurable acknowledgement and fetch parameters.
+
+### Global Configuration
+- **Kafka Bootstrap Servers**: `localhost:9095,localhost:9096`
+- **Topic**: `order-events-topic`
 
 ## Producer Configuration
 
@@ -218,18 +220,87 @@ spring.kafka.listener.ack-mode=[MODE]
 *   **Cons:** Introduces the same heavy network overhead issues as the `RECORD` mode.
 *   **When to use:** Highly sensitive transactions where you need absolute certainty that a specific message is committed *right now*, before the next line of code executes.
 
+## Transaction in Kafka
+
+1. Producer transaction id should be unique per instance, if the producer applciaiton is running on multiple instances at the same time.
+1. Why we need to have unique id for each instance of producer is to avoid `ZOMBIE FENCING`
+1. We need to set unique prefix for transaction id for every applciaiton `spring.kafka.producer.transaction-id-prefix=myapp-`
+
 ---
 
 ## Project Structure
-- `Order.java` - Event model
-- `OrderCreatedEventProducer.java` - Kafka producer for order events
-- `OrderConsumer.java` - Kafka consumer for order events
-- `EventScheduler.java` - Scheduled event producer (when enabled)
-- `AppConfig.java` - Application configuration
+
+```text
+.
+├── pom.xml                        # Parent aggregator POM
+├── kafka-producer                 # Producer module
+│   ├── pom.xml                    # Producer build configuration (with web starter)
+│   └── src/main/java/com/hans
+│       ├── App.java               # Launcher for producer
+│       ├── config/AppConfig.java  # Producer templates config
+│       ├── controller/            # REST API publishing controller (POST endpoints)
+│       ├── event/                 # Producer events schema (OrderCreatedEvent, PaymentEvent, NotifyEvent)
+│       └── producer/              # Serialization and sending services (Scheduler, etc.)
+└── kafka-consumer                 # Consumer module
+    ├── pom.xml                    # Consumer build configuration
+    └── src/main/java/com/hans
+        ├── App.java               # Launcher for consumer
+        ├── config/AppConfig.java  # Consumer & listener container factories config
+        ├── event/                 # Consumer events schema (Order, PaymentEvent, NotifyEvent)
+        └── consumer/              # Listener record processing classes (OrderConsumer, OtherEventConsumer)
+```
 
 ---
 
 ## Running the Application
-1. Ensure Kafka is running on localhost:9095 and localhost:9096
-2. Run the Spring Boot application
-3. To enable the scheduled producer, set `enable.scheduled.producer=true` in application.properties
+
+### 1. Prerequisite
+Ensure Kafka brokers are running on `localhost:9095` and `localhost:9096`.
+
+### 2. Building the Project
+From the root directory, compile and build both submodules:
+```bash
+mvn clean package
+```
+
+### 3. Running the Producer Service (Port 8080)
+To run the producer:
+```bash
+cd kafka-producer
+mvn spring-boot:run
+```
+*To enable the scheduled event generator, set `enable.scheduled.producer=true` in `kafka-producer/src/main/resources/application.properties`.*
+
+### 4. Running the Consumer Service (Port 8081)
+To run the consumer:
+```bash
+cd kafka-consumer
+mvn spring-boot:run
+```
+
+---
+
+## Publishing Events via REST API (Producer)
+
+When the `kafka-producer` is running, you can publish events to Kafka on-demand by sending HTTP `POST` requests:
+
+#### 1. Publish Order Event (`order-events-topic`)
+```bash
+curl -X POST http://localhost:8080/api/publish/order \
+  -H "Content-Type: application/json" \
+  -d '{"id":123,"orderNumber":"ORD-12345","customerId":"CUST-88","productId":"PROD-99","quantity":3,"price":499.50}'
+```
+
+#### 2. Publish Payment Event (`payment-events`)
+```bash
+curl -X POST http://localhost:8080/api/publish/payment \
+  -H "Content-Type: application/json" \
+  -d '{"paymentId":"PAY-777","orderId":"ORD-12345","amount":499.50,"status":"SUCCESS","currency":"USD"}'
+```
+
+#### 3. Publish Notification Event (`notify-events`)
+```bash
+curl -X POST http://localhost:8080/api/publish/notify \
+  -H "Content-Type: application/json" \
+  -d '{"notifyId":"NOT-999","customerId":"CUST-88","message":"Order ORD-12345 processed successfully","type":"EMAIL","priority":"HIGH"}'
+```
