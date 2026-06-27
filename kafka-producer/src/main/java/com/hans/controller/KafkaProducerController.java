@@ -43,4 +43,17 @@ public class KafkaProducerController {
         otherEventProducer.publishNotifyEvent(notifyEvent);
         return "Notification event published successfully!";
     }
+
+    @PostMapping("/order-txn-commit")
+    public String publishOrderAndPayment(@RequestBody OrderCreatedEvent orderCreatedEvent) {
+        log.info("Received REST request to publish order and payment: {}", orderCreatedEvent);
+        var payment = new PaymentEvent(
+            java.util.UUID.randomUUID().toString(),
+            orderCreatedEvent.orderNumber(),
+            orderCreatedEvent.price(),
+            "SUCCESS",
+            "USD"
+        );
+        return otherEventProducer.transactionalMessage(orderCreatedEvent, payment);
+    }
 }

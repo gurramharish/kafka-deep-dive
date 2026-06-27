@@ -53,3 +53,20 @@ curl -X POST http://localhost:8080/api/publish/notify \
     "priority": "HIGH"
   }'
 ```
+
+### 1. Publish Order Event and Payment Event in Transaction
+Publishes an `OrderCreatedEvent` to the `order-events-topic`.
+Publishes and `PaymentEvent` to the `payment-events` topic.
+
+```sh
+curl -X POST http://localhost:8080/api/publish/order-txn-commit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": 112,
+    "orderNumber": "ORD-INTEL-112",
+    "customerId": "CUST-999",
+    "productId": "PROD-ABC",
+    "quantity": 5,
+    "price": 749.99
+  }'
+```

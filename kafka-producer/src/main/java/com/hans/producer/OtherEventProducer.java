@@ -1,5 +1,6 @@
 package com.hans.producer;
 
+import com.hans.event.OrderCreatedEvent;
 import com.hans.event.producer.NotifyEvent;
 import com.hans.event.producer.PaymentEvent;
 import java.util.UUID;
@@ -47,6 +48,16 @@ public class OtherEventProducer {
         }).exceptionally(ex -> {
             log.error("Failed to produce message to topic '{}'", topic, ex);
             return null;
+        });
+    }
+
+    public String transactionalMessage(OrderCreatedEvent orderCreatedEvent, PaymentEvent paymentEvent) {
+
+        return kafkaTemplate.executeInTransaction(ops -> {
+            SendResult<String, Object> orderResult = ops.send("order-events-topic", orderCreatedEvent.orderNumber(), orderCreatedEvent).join();
+
+            SendResult<String, Object> paymentResult = ops.send("payment-events", paymentEvent.paymentId(), paymentEvent).join();
+            return "SUCCESS";
         });
     }
 }

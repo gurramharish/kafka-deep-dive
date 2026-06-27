@@ -27,8 +27,13 @@ public class AppConfig {
 
   @Bean
   public KafkaTemplate<String, Object> defaultKafkaTemplate(
-      ProducerFactory<String, Object> producerFactory) {
-    return new KafkaTemplate<>(producerFactory);
+      KafkaProperties kafkaProperties) {
+    Map<String, Object> configProps = kafkaProperties.buildProducerProperties();
+
+
+    DefaultKafkaProducerFactory<String, Object> factory = new DefaultKafkaProducerFactory<>(configProps);
+
+    return new KafkaTemplate<>(factory);
   }
 
 }
